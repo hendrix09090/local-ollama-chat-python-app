@@ -12,6 +12,10 @@
 		<data>
 		jiMXHe2/gGu9p3+O3RpqVGbONRE=
 		</data>
+		<key>Resources/__pycache__/site.cpython-312.opt-1.pyc</key>
+		<data>
+		DQkGLJeFpLSEkqTrKlems/SxwFg=
+		</data>
 		<key>Resources/__pycache__/site.cpython-312.pyc</key>
 		<data>
 		DQkGLJeFpLSEkqTrKlems/SxwFg=
@@ -55,6 +59,17 @@
 			X92yvDN0TrSkH2FT7nqBEm6WgAZJ9CS2MXV1a7IpE4o=
 			</data>
 		</dict>
+		<key>Resources/__pycache__/site.cpython-312.opt-1.pyc</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			DQkGLJeFpLSEkqTrKlems/SxwFg=
+			</data>
+			<key>hash2</key>
+			<data>
+			6JqR/AB/0Qh/3qAw3uMfcGb3YhTTo6FHfyE1OOq/HRk=
+			</data>
+		</dict>
 		<key>Resources/__pycache__/site.cpython-312.pyc</key>
 		<dict>
 			<key>hash</key>
@@ -65,6 +80,11 @@
 			<data>
 			6JqR/AB/0Qh/3qAw3uMfcGb3YhTTo6FHfyE1OOq/HRk=
 			</data>
+		</dict>
+		<key>Resources/chat_history.json</key>
+		<dict>
+			<key>symlink</key>
+			<string>/Users/danny/Documents/Python Projects/Local-AI-Chat/chat_history.json</string>
 		</dict>
 		<key>Resources/lib/python3.12/config</key>
 		<dict>

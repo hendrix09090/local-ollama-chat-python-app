@@ -6,9 +6,10 @@ Usage:
 """
 
 from setuptools import setup
+import os
 
 APP = ['Local-AI-Chat.py']
-DATA_FILES = []
+DATA_FILES = [('.', ['chat_history.json'])]
 OPTIONS = {}
 
 setup(

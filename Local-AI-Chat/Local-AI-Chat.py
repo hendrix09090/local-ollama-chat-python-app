@@ -4,6 +4,7 @@ import json
 import threading
 import datetime
 import webbrowser
+import os
 
 class ChatApp:
     def __init__(self, page: ft.Page):
@@ -28,12 +29,55 @@ class ChatApp:
         self.chat_sessions.value = []
         self.current_chat_id.value = None
 
+        # Load chat history
+        self.load_chat_history()
+
         # Build UI
         self.build_ui()
         self.load_models()
 
+        # Update chat list to reflect loaded sessions
+        self.update_chat_list()
+
     def build_ui(self):
         """Build the main UI layout"""
+        self.active_tab = "chat"  # Track the active tab
+
+        # Create buttons for tabs
+        self.chat_tab_button = ft.ElevatedButton("Chat", on_click=self.show_chat_tab)
+        self.code_editor_tab_button = ft.ElevatedButton("Code Editor", on_click=self.show_code_editor_tab)
+
+        # Create a container for the tab content
+        self.tab_content = ft.Column()
+
+        # Add buttons and initial content to the page
+        self.page.add(
+            ft.Row(
+                controls=[self.chat_tab_button, self.code_editor_tab_button],
+                alignment=ft.MainAxisAlignment.START
+            ),
+            self.tab_content
+        )
+
+        # Show the chat tab by default
+        self.show_chat_tab(None)
+
+    def show_chat_tab(self, e):
+        """Show the chat tab content"""
+        self.active_tab = "chat"
+        self.tab_content.controls.clear()
+        self.tab_content.controls.append(self.build_chat_tab())
+        self.page.update()
+
+    def show_code_editor_tab(self, e):
+        """Show the code editor tab content"""
+        self.active_tab = "code_editor"
+        self.tab_content.controls.clear()
+        self.tab_content.controls.append(self.build_code_editor_tab())
+        self.page.update()
+
+    def build_chat_tab(self):
+        """Build the chat tab layout"""
         # Model selection dropdown
         self.model_dropdown = ft.Dropdown(
             ref=self.current_model,
@@ -65,31 +109,94 @@ class ChatApp:
             on_submit=self.handle_send_message
         )
         self.chat_history = ft.ListView(expand=True, auto_scroll=True)
-        
-        # Assemble main layout
-        self.page.add(
-            ft.Row(
-                controls=[
-                    self.sidebar,
-                    ft.VerticalDivider(width=1),
-                    ft.Column(
-                        controls=[
-                            self.chat_history,
-                            ft.Row(
-                                controls=[
-                                    self.chat_input,
-                                    ft.ElevatedButton("Send", on_click=self.handle_send_message),
-                                    ft.ElevatedButton("Clear Chat", on_click=self.handle_clear_chat)
-                                ],
-                                alignment=ft.MainAxisAlignment.END
-                            )
-                        ],
-                        expand=True
-                    )
-                ],
-                expand=True
-            )
+
+        # Assemble chat layout
+        return ft.Row(
+            controls=[
+                self.sidebar,
+                ft.VerticalDivider(width=1),
+                ft.Column(
+                    controls=[
+                        self.chat_history,
+                        ft.Row(
+                            controls=[
+                                self.chat_input,
+                                ft.ElevatedButton("Send", on_click=self.handle_send_message),
+                                ft.ElevatedButton("Clear Chat", on_click=self.handle_clear_chat)
+                            ],
+                            alignment=ft.MainAxisAlignment.END
+                        )
+                    ],
+                    expand=True
+                )
+            ],
+            expand=True
         )
+
+    def build_code_editor_tab(self):
+        """Build the code editor tab layout"""
+        self.code_editor = ft.TextField(
+            hint_text="Write your code here...",
+            expand=True,
+            multiline=True,  # Enable multiline input
+            min_lines=10,
+            max_lines=20,
+            filled=True
+        )
+        
+        self.load_code_button = ft.ElevatedButton("Load Code", on_click=self.load_code)
+        self.save_code_button = ft.ElevatedButton("Save Code", on_click=self.save_code)
+        self.import_project_code_button = ft.ElevatedButton("Import Project Code", on_click=self.import_project_code)
+
+        return ft.Column(
+            controls=[
+                self.code_editor,
+                ft.Row(
+                    controls=[
+                        self.load_code_button,
+                        self.save_code_button,
+                        self.import_project_code_button
+                    ],
+                    alignment=ft.MainAxisAlignment.END
+                )
+            ],
+            expand=True
+        )
+
+    def load_code(self, e):
+        """Load code from a file"""
+        file_path = "path/to/your/code_file.py"  # Update with your file path
+        if os.path.exists(file_path):
+            with open(file_path, "r") as f:
+                code = f.read()
+                self.code_editor.value = code
+                self.page.update()
+        else:
+            self.show_error("File not found!", ft.Colors.RED)
+
+    def save_code(self, e):
+        """Save code to a file"""
+        file_path = "path/to/your/code_file.py"  # Update with your file path
+        with open(file_path, "w") as f:
+            f.write(self.code_editor.value)
+        self.show_error("Code saved successfully!", ft.Colors.GREEN)
+
+    def import_project_code(self, e):
+        """Import project code from a directory"""
+        # Implement logic to load all code files from a project directory
+        project_directory = "path/to/your/project"  # Update with your project directory
+        if os.path.exists(project_directory):
+            code_files = [f for f in os.listdir(project_directory) if f.endswith('.py')]
+            if code_files:
+                # Load the first code file for simplicity
+                with open(os.path.join(project_directory, code_files[0]), "r") as f:
+                    code = f.read()
+                    self.code_editor.value = code
+                    self.page.update()
+            else:
+                self.show_error("No Python files found in the project directory!", ft.Colors.RED)
+        else:
+            self.show_error("Project directory not found!", ft.Colors.RED)
 
     # -- Model Management --
     def load_models(self):
@@ -131,6 +238,7 @@ class ChatApp:
         self.current_chat_id.value = new_chat["id"]
         self.update_chat_list()
         self.handle_clear_chat(e)
+        self.save_chat_history()  # Save chat history after creating a new chat
 
     def update_chat_list(self):
         """Update the sidebar chat list"""
@@ -140,7 +248,6 @@ class ChatApp:
                 ft.ListTile(
                     title=ft.Text(chat["name"]),
                     on_click=lambda e, cid=chat["id"]: self.load_chat(cid),
-                    on_long_press=lambda e, cid=chat["id"]: self.show_chat_context_menu(e, cid),
                     trailing=ft.IconButton(
                         icon=ft.icons.DELETE,
                         on_click=lambda e, cid=chat["id"]: self.delete_chat(cid)
@@ -163,24 +270,40 @@ class ChatApp:
         """Display a message in the chat history"""
         is_user = message["sender"] == "user"
         display_name = self.user_name.value if is_user else "AI"
-        self.chat_history.controls.append(
-            ft.Container(
-                content=ft.Text(
-                    f"{display_name}: {message['text']}",
-                    color=ft.Colors.WHITE
+        
+        # Create a container for the message and the copy button
+        message_container = ft.Row(
+            controls=[
+                ft.Container(
+                    content=ft.Text(
+                        f"{display_name}: {message['text']}",
+                        color=ft.Colors.WHITE
+                    ),
+                    bgcolor=ft.Colors.BLUE_700 if is_user else ft.Colors.GREY_800,
+                    padding=10,
+                    border_radius=10,
+                    margin=ft.margin.only(
+                        left=100 if is_user else 0,
+                        right=0 if is_user else 100,
+                        top=5,
+                        bottom=5
+                    ),
+                    width=300  # Set a fixed width for the message bubble
                 ),
-                bgcolor=ft.Colors.BLUE_700 if is_user else ft.Colors.GREY_800,
-                padding=10,
-                border_radius=10,
-                margin=ft.margin.only(
-                    left=100 if is_user else 0,
-                    right=0 if is_user else 100,
-                    top=5,
-                    bottom=5
+                ft.IconButton(
+                    icon=ft.Icons.CONTENT_COPY,
+                    on_click=lambda e: self.copy_message(message['text'])  # Add copy functionality
                 )
-            )
+            ]
         )
+        
+        self.chat_history.controls.append(message_container)
         self.page.update()
+
+    def copy_message(self, text):
+        """Copy message text to clipboard"""
+        self.page.set_clipboard(text)  # Use Flet's method to set clipboard
+        self.show_error("Message copied to clipboard!", ft.Colors.GREEN)  # Show confirmation message
 
     # -- Message Handling --
     def handle_send_message(self, e):
@@ -190,6 +313,11 @@ class ChatApp:
 
         prompt = self.chat_input.value.strip()
         self.display_user_message(prompt)
+        
+        # Display the AI thinking message
+        self.display_message({"sender": "ai", "text": self.ai_thinking_message.value})
+        
+        # Process the AI response
         self.process_ai_response(prompt)
         self.chat_input.value = ""
         self.chat_input.focus()
@@ -204,13 +332,11 @@ class ChatApp:
         """Process AI response in a background thread"""
         def process():
             try:
-                # Get the actual model name from the dropdown
                 selected_model = self.current_model.current.value
                 if not selected_model:
                     self.page.run_task(lambda: self.show_error("No model selected!"))
                     return
 
-                # Ensure proper indentation for the data dictionary
                 data = {
                     "model": selected_model,
                     "prompt": prompt,
@@ -222,14 +348,13 @@ class ChatApp:
                 if response.status_code != 200:
                     error_details = {
                         "status": response.status_code,
-                        "response": response.text[:200]  # Show first 200 chars of response
+                        "response": response.text[:200]
                     }
                     async def show_api_error():
                         self.show_error(f"API Error: {error_details}", ft.Colors.ORANGE)
                     self.page.run_task(show_api_error)
                     return
 
-                # Stream response
                 text = ""
                 for line in response.iter_lines():
                     if line:
@@ -246,15 +371,10 @@ class ChatApp:
                                 self.page.run_task(show_error)
                                 return
                         except json.JSONDecodeError:
-                            continue  # Skip invalid JSON lines
-                        except Exception as e:
-                            async def handle_error():
-                                self.show_error(f"Processing Error: {str(e)}")
-                            self.page.run_task(handle_error)
-                            return
+                            continue
 
-                # Add final message to session
                 self.add_message_to_session("ai", text)
+                self.display_message({"sender": "ai", "text": text})
                 
             except requests.exceptions.RequestException as e:
                 async def handle_request_error():
@@ -265,7 +385,6 @@ class ChatApp:
                     self.show_error(f"AI Error: {str(e)}")
                 self.page.run_task(handle_general_error)
 
-        # Start processing in background thread
         threading.Thread(target=process, daemon=True).start()
 
     async def update_ai_message(self, text, final=False):
@@ -363,6 +482,7 @@ class ChatApp:
             self.current_chat_id.value = None
         self.update_chat_list()
         self.show_error("Chat deleted successfully!", ft.Colors.GREEN)
+        self.save_chat_history()  # Save chat history after deletion
 
     def handle_clear_chat(self, e):
         """Clear current chat display"""
@@ -431,6 +551,17 @@ class ChatApp:
         if not self.chat_input.value.strip():
             return False
         return True
+
+    def save_chat_history(self):
+        """Save chat sessions to a JSON file"""
+        with open("chat_history.json", "w") as f:
+            json.dump(self.chat_sessions.value, f)
+
+    def load_chat_history(self):
+        """Load chat sessions from a JSON file"""
+        if os.path.exists("chat_history.json"):
+            with open("chat_history.json", "r") as f:
+                self.chat_sessions.value = json.load(f)
 
 def main(page: ft.Page):
     chat_app = ChatApp(page)
