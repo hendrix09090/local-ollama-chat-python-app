@@ -5,6 +5,7 @@ import threading
 import datetime
 import webbrowser
 import os
+import time
 
 class ChatApp:
     def __init__(self, page: ft.Page):
@@ -22,10 +23,11 @@ class ChatApp:
         self.chat_sessions = ft.Ref[list]()
         self.current_chat_id = ft.Ref[int]()
         self.selected_chat_id = ft.Ref[int]()
+        self.ai_message = None  # To track the current AI message control
 
         # Initialize ref values
         self.user_name.value = "Danny"
-        self.ai_thinking_message.value = "🤔 Ron Ai is thinking..."
+        self.ai_thinking_message.value = "🤔 Ai Ron is thinking..."
         self.chat_sessions.value = []
         self.current_chat_id.value = None
 
@@ -47,7 +49,11 @@ class ChatApp:
             hint_text="Select Model",
             on_change=self.handle_model_change,
             options=[],
-            expand=True
+            expand=True,
+            width=300,  # Set fixed width
+            autofocus=True,
+            label="AI Model",
+            hint_style=ft.TextStyle(color=ft.Colors.GREY_400)
         )
 
         # Chat history sidebar
@@ -61,7 +67,7 @@ class ChatApp:
                 ft.Divider(),
                 self.chat_list
             ],
-            width=200,
+            width=300,  # Increased from 200
             spacing=10
         )
 
@@ -171,34 +177,40 @@ class ChatApp:
         is_user = message["sender"] == "user"
         display_name = self.user_name.value if is_user else "AI"
         
-        # Create a container for the message and the copy button
+        # Calculate available width accounting for sidebar
+        available_width = self.page.width - 320  # 300px sidebar + 20px padding
+        
         message_container = ft.Row(
             controls=[
                 ft.Container(
                     content=ft.Text(
                         f"{display_name}: {message['text']}",
-                        color=ft.Colors.WHITE
+                        color=ft.Colors.WHITE,
+                        width=available_width * 0.9  # Use 90% of available space
                     ),
                     bgcolor=ft.Colors.BLUE_700 if is_user else ft.Colors.GREY_800,
                     padding=10,
                     border_radius=10,
                     margin=ft.margin.only(
-                        left=100 if is_user else 0,
-                        right=0 if is_user else 100,
+                        left=100 if is_user else 20,
+                        right=20 if is_user else 100,
                         top=5,
                         bottom=5
                     ),
-                    width=300  # Set a fixed width for the message bubble
+                    width=available_width * 0.9,
+                    alignment=ft.alignment.top_left
                 ),
                 ft.IconButton(
                     icon=ft.Icons.CONTENT_COPY,
-                    on_click=lambda e: self.copy_message(message['text'])  # Add copy functionality
+                    on_click=lambda e: self.copy_message(message['text'])
                 )
-            ]
+            ],
+            alignment=ft.MainAxisAlignment.END if is_user else ft.MainAxisAlignment.START
         )
         
         self.chat_history.controls.append(message_container)
         self.page.update()
+        self.chat_history.scroll_to(offset=0, duration=300)  # Force scroll to bottom
 
     def copy_message(self, text):
         """Copy message text to clipboard"""
@@ -214,8 +226,21 @@ class ChatApp:
         prompt = self.chat_input.value.strip()
         self.display_user_message(prompt)
         
-        # Display the AI thinking message
-        self.display_message({"sender": "ai", "text": self.ai_thinking_message.value})
+        # Display the AI thinking message with a spinning wheel
+        self.ai_thinking_container = ft.Row(
+            controls=[
+                ft.Text("🤔 Ai Ron is thinking...", color=ft.Colors.WHITE),
+                ft.ProgressRing(
+                    width=16,
+                    height=16,
+                    stroke_width=2,
+                    color=ft.Colors.BLUE_200
+                )
+            ],
+            alignment=ft.MainAxisAlignment.START
+        )
+        self.chat_history.controls.append(self.ai_thinking_container)
+        self.page.update()
         
         # Process the AI response
         self.process_ai_response(prompt)
@@ -229,7 +254,7 @@ class ChatApp:
         self.display_message({"sender": "user", "text": prompt})
 
     def process_ai_response(self, prompt):
-        """Process AI response in a background thread"""
+        """Process AI response with typing simulation"""
         def process():
             try:
                 selected_model = self.current_model.current.value
@@ -237,81 +262,91 @@ class ChatApp:
                     self.page.run_task(lambda: self.show_error("No model selected!"))
                     return
 
-                data = {
-                    "model": selected_model,
-                    "prompt": prompt,
-                    "stream": True
-                }
-                
+                data = {"model": selected_model, "prompt": prompt, "stream": True}
                 response = requests.post(self.ollama_url, json=data, stream=True, timeout=30)
                 
+                # Always remove thinking spinner when done
+                def cleanup():
+                    if hasattr(self, 'ai_thinking_container') and \
+                       self.ai_thinking_container in self.chat_history.controls:
+                        self.chat_history.controls.remove(self.ai_thinking_container)
+                        self.page.update()
+
                 if response.status_code != 200:
-                    error_details = {
-                        "status": response.status_code,
-                        "response": response.text[:200]
-                    }
+                    error_details = {"status": response.status_code, "response": response.text[:200]}
                     async def show_api_error():
+                        cleanup()
                         self.show_error(f"API Error: {error_details}", ft.Colors.ORANGE)
                     self.page.run_task(show_api_error)
                     return
 
-                text = ""
-                for line in response.iter_lines():
-                    if line:
-                        try:
+                full_response = []
+                first_chunk = [True]
+                
+                try:
+                    for line in response.iter_lines():
+                        if line:
                             chunk = json.loads(line.decode('utf-8'))
                             if "response" in chunk:
-                                text += chunk["response"]
-                                async def update_response():
-                                    await self.update_ai_message(text)
-                                self.page.run_task(update_response)
+                                for char in chunk["response"]:
+                                    full_response.append(char)
+                                    async def update_char(fc=first_chunk[0]):
+                                        await self.update_ai_message(''.join(full_response), fc)
+                                        first_chunk[0] = False
+                                    self.page.run_task(update_char)
+                                    time.sleep(0.001)
                             elif "error" in chunk:
                                 async def show_error():
+                                    cleanup()
                                     self.show_error(f"AI Error: {chunk['error']}")
                                 self.page.run_task(show_error)
                                 return
-                        except json.JSONDecodeError:
-                            continue
-                        except Exception as e:
-                            async def handle_error():
-                                self.show_error(f"Processing Error: {str(e)}")
-                            self.page.run_task(handle_error)
-                            return
+                except Exception as e:
+                    async def handle_error():
+                        cleanup()
+                        self.show_error(f"Processing Error: {str(e)}")
+                    self.page.run_task(handle_error)
+                    return
 
-                self.add_message_to_session("ai", text)
-                self.display_message({"sender": "ai", "text": text})
+                # Final cleanup
+                async def finalize():
+                    cleanup()
+                    self.add_message_to_session("ai", ''.join(full_response))
+                self.page.run_task(finalize)
                 
-            except requests.exceptions.RequestException as e:
-                async def handle_request_error():
-                    self.show_error(f"Connection Error: {str(e)}")
-                self.page.run_task(handle_request_error)
             except Exception as e:
-                async def handle_general_error(e=e):
-                    self.show_error(f"AI Error: {str(e)}")
+                async def handle_general_error():
+                    cleanup()
+                    self.show_error(f"Error: {str(e)}")
                 self.page.run_task(handle_general_error)
 
         threading.Thread(target=process, daemon=True).start()
 
-    async def update_ai_message(self, text, final=False):
-        """Update AI message in UI"""
+    async def update_ai_message(self, text, first_chunk=False):
+        """Update AI message in UI with typing effect"""
         async def update():
-            if len(self.chat_history.controls) > 0 and isinstance(self.chat_history.controls[-1], ft.Container):
-                last_message = self.chat_history.controls[-1].content.value
-                if "AI:" in last_message:
-                    self.chat_history.controls[-1].content.value = f"AI: {text}"
-                else:
-                    self.chat_history.controls.append(
-                        ft.Container(
-                            content=ft.Text(f"AI: {text}", color=ft.Colors.WHITE),
-                            bgcolor=ft.Colors.GREY_800,
-                            padding=10,
-                            border_radius=10,
-                            margin=ft.margin.only(right=100)
-                        )
-                    )
-                if final:
-                    self.update_session_message("ai", text)
-                self.page.update()
+            if first_chunk:
+                # Create persistent message container
+                self.ai_message_container = ft.Container(
+                    content=ft.Text(
+                        f"AI: {text}",
+                        color=ft.Colors.WHITE,
+                        width=self.page.width * 0.6
+                    ),
+                    bgcolor=ft.Colors.GREY_800,
+                    padding=10,
+                    border_radius=10,
+                    margin=ft.margin.only(right=100),
+                    width=self.page.width * 0.6,
+                    alignment=ft.alignment.top_left
+                )
+                self.chat_history.controls.append(self.ai_message_container)
+            else:
+                # Update existing container
+                self.ai_message_container.content.value = f"AI: {text}"
+            
+            self.page.update()
+            self.chat_history.scroll_to(offset=0, duration=300)
 
         self.page.run_task(update)
 
@@ -469,6 +504,9 @@ class ChatApp:
                 self.chat_sessions.value = json.load(f)
 
 def main(page: ft.Page):
+    # Set the icon for the application
+    page.icon = "OIP-C.jpg"  # Ensure this path is correct
+
     chat_app = ChatApp(page)
 
 if __name__ == "__main__":
