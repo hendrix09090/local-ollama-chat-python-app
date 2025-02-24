@@ -186,9 +186,9 @@ class ChatApp:
                     content=ft.Text(
                         f"{display_name}: {message['text']}",
                         color=ft.Colors.WHITE,
-                        width=available_width * 0.9  # Use 90% of available space
+                        width=available_width * 0.6  # Use 60% of available space
                     ),
-                    bgcolor=ft.Colors.BLUE_700 if is_user else ft.Colors.GREY_800,
+                    bgcolor=ft.Colors.BLUE_700 if is_user else ft.Colors.GREEN_900,  # Change user background to BLUE_700
                     padding=10,
                     border_radius=10,
                     margin=ft.margin.only(
@@ -197,7 +197,7 @@ class ChatApp:
                         top=5,
                         bottom=5
                     ),
-                    width=available_width * 0.9,
+                    width=available_width * 0.6,
                     alignment=ft.alignment.top_left
                 ),
                 ft.IconButton(
@@ -333,7 +333,7 @@ class ChatApp:
                         color=ft.Colors.WHITE,
                         width=self.page.width * 0.6
                     ),
-                    bgcolor=ft.Colors.GREY_800,
+                    bgcolor=ft.Colors.GREEN_600,  # Set AI message background to dark green
                     padding=10,
                     border_radius=10,
                     margin=ft.margin.only(right=100),
